@@ -1,0 +1,17 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  lower-and-run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install --index-url https://download.pytorch.org/whl/cpu torch torchvision numpy
+      - run: python train.py            # ~1 min on CPU; trains, exports test set
+      - run: python lower.py            # PTQ int8 + .efm export
+      - run: make CXX=g++               # C++17 runtime (scalar kernels on x86 CI; NEON on arm64)
+      - run: ./edgeforge eval data/model_fp32.efm data/mnist_test.bin
+      - run: ./edgeforge eval data/model_int8.efm data/mnist_test.bin
+      - run: python test_parity.py      # C++ vs PyTorch (fp32) and vs NumPy int reference (int8)
+      - run: ./edgeforge bench data/model_int8.efm data/mnist_test.bin 2000
